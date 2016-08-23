@@ -1,0 +1,10 @@
+apply plugin: 'java'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    compile 'com.datastax.cassandra:cassandra-driver-core:3.1.0'
+    compile 'ch.qos.logback:logback-classic:1.1.7'
+}
