@@ -1,18 +1,23 @@
 package info.batey.examples.cassandra.lwts;
 
 import com.datastax.driver.core.*;
+import com.datastax.driver.core.exceptions.WriteTimeoutException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-public class VouchersMutableLWT implements VoucherManager {
+class VouchersMutableLWT implements VoucherManager {
 
-    private static final int MAX_VOUCHERS = 3;
-
+    private static final Logger LOGGER = LoggerFactory.getLogger(VouchersMutableLWT.class);
     private Session session;
     private static final String GET_SOLD_VOUCHERS = "SELECT sold FROM vouchers_mutable WHERE name = ?";
     private static final String UPDATE_SOLD_VOUCHERS = "UPDATE vouchers_mutable SET sold = ? WHERE name = ? IF sold = ?";
+    private static final String DELETE_VOUCHERS = "DELETE FROM vouchers_mutable WHERE name = ? IF EXISTS";
+
     private final PreparedStatement getSoldVouchers;
     private final PreparedStatement updateSoldVouchers;
+    private final PreparedStatement deleteVoucher;
 
-    public VouchersMutableLWT(Session session) {
+    VouchersMutableLWT(Session session) {
         this.session = session;
         getSoldVouchers = session.prepare(GET_SOLD_VOUCHERS);
         getSoldVouchers.setConsistencyLevel(ConsistencyLevel.LOCAL_SERIAL);
@@ -20,6 +25,10 @@ public class VouchersMutableLWT implements VoucherManager {
         updateSoldVouchers = session.prepare(UPDATE_SOLD_VOUCHERS);
         updateSoldVouchers.setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM);
         updateSoldVouchers.setSerialConsistencyLevel(ConsistencyLevel.LOCAL_SERIAL);
+
+        deleteVoucher = session.prepare(DELETE_VOUCHERS);
+        deleteVoucher.setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM);
+        deleteVoucher.setSerialConsistencyLevel(ConsistencyLevel.LOCAL_SERIAL);
     }
 
     public boolean createVoucher(String name) {
@@ -27,14 +36,37 @@ public class VouchersMutableLWT implements VoucherManager {
         return result.wasApplied();
     }
 
-    public boolean sellVoucher(String name, String who) {
+    @Override
+    public boolean sellVoucher(String name, String who) throws UnknownException, CommitFailed {
         Row one = session.execute(getSoldVouchers.bind(name)).one();
         int sold = one.getInt("sold");
-        if (sold < MAX_VOUCHERS) {
-           session.execute(updateSoldVouchers.bind(sold + 1, name, sold));
-            return true;
-        } else {
-            return false;
+        try {
+            if (session.execute(updateSoldVouchers.bind(sold + 1, name, sold)).wasApplied()) {
+                return true;
+            } else {
+               return false;
+            }
+        } catch (WriteTimeoutException e) {
+            // TODO check if this was in the paxos phase or the commit
+            LOGGER.warn("Failed to write", e);
+            if (e.getWriteType().equals(WriteType.CAS)) {
+                throw new UnknownException();
+            } else if (e.getWriteType().equals(WriteType.SIMPLE)) {
+                throw new CommitFailed();
+            } else {
+                throw new RuntimeException("Unexpected write type:j " + e.getWriteType());
+            }
         }
     }
+
+    @Override
+    public int vouchersSold(String name) {
+        return session.execute(getSoldVouchers.bind(name)).one().getInt("sold");
+    }
+
+    @Override
+    public void deleteVoucher(String name) {
+        session.execute(deleteVoucher.bind(name));
+    }
+
 }

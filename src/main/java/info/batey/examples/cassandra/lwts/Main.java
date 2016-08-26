@@ -4,12 +4,12 @@ import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Session;
 
 public class Main {
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         Cluster cluster = Cluster.builder()
                 .addContactPoint("localhost")
                 .build();
 
-        Session session = cluster.connect("lwts");
+        Session session = cluster.connect();
         session.execute("CREATE KEYSPACE IF NOT EXISTS lwts with replication = {'class': 'SimpleStrategy', 'replication_factor': 3 };");
         session.execute("USE lwts");
 
@@ -40,7 +40,7 @@ public class Main {
         cluster.close();
     }
 
-    private static void sellSomeVouchers(VoucherManager vm) {
+    private static void sellSomeVouchers(VoucherManager vm) throws Exception {
         String freeTv = "free tv";
         String who = "chbatey";
 

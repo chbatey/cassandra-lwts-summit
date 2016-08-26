@@ -2,20 +2,22 @@ package info.batey.examples.cassandra.lwts;
 
 import com.datastax.driver.core.*;
 
-public class VouchersBatches implements VoucherManager {
+class VouchersBatches implements VoucherManager {
 
     private static final int MAX_VOUCHERS = 3;
 
     private Session session;
     private static final String GET_SOLD_VOUCHERS = "SELECT sold FROM vouchers WHERE name = ?";
+    private static final String DELETE_VOUCHER = "DELETE  FROM vouchers WHERE name = ? IF EXISTS";
     private static final String INSERT_SOLD_VOUCHERS = "BEGIN BATCH \n" +
             "    UPDATE vouchers SET sold = ? WHERE name = ? IF sold = ?\n" +
             "    INSERT INTO vouchers (name, when, who) VALUES ( ?, now(), ?) \n" +
             "APPLY BATCH";
     private final PreparedStatement getSoldVouchers;
     private final PreparedStatement updateSoldVouchers;
+    private final PreparedStatement deleteVoucher;
 
-    public VouchersBatches(Session session) {
+    VouchersBatches(Session session) {
         this.session = session;
 
         getSoldVouchers = session.prepare(GET_SOLD_VOUCHERS);
@@ -24,6 +26,10 @@ public class VouchersBatches implements VoucherManager {
         updateSoldVouchers = session.prepare(INSERT_SOLD_VOUCHERS);
         updateSoldVouchers.setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM);
         updateSoldVouchers.setSerialConsistencyLevel(ConsistencyLevel.LOCAL_SERIAL);
+
+        deleteVoucher = session.prepare(DELETE_VOUCHER);
+        deleteVoucher.setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM);
+        deleteVoucher.setSerialConsistencyLevel(ConsistencyLevel.LOCAL_SERIAL);
     }
 
     @Override
@@ -42,5 +48,15 @@ public class VouchersBatches implements VoucherManager {
         } else {
             return false;
         }
+    }
+
+    @Override
+    public int vouchersSold(String name) {
+        return session.execute(getSoldVouchers.bind(name)).one().getInt("sold");
+    }
+
+    @Override
+    public void deleteVoucher(String name) {
+        session.execute(deleteVoucher.bind(name));
     }
 }
