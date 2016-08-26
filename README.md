@@ -229,7 +229,7 @@ CREATE TABLE IF NOT EXISTS locks ( name text PRIMARY KEY, owner text );
 
 Uniqueness
 ```
-CREATE TABLE lwts.users (
+CREATE TABLE IF NOT EXISTS users (
     user_name text PRIMARY KEY,
     email text,
     password text
@@ -244,7 +244,7 @@ INSERT INTO users (user_name, password, email )
 Finite resource:
 
 ```
-CREATE TABLE vouchers_mutable (
+CREATE TABLE IF NOT EXISTS vouchers_mutable (
     name text PRIMARY KEY,
     sold int
 )
@@ -265,7 +265,7 @@ UPDATE vouchers_mutable SET sold = 1 WHERE name = 'free tv' IF sold = 0;
 But what if we want to keep track of who has the vouchers?
 
 ```
-CREATE TABLE vouchers (
+CREATE TABLE IF NOT EXISTS vouchers (
     name text,
     when timeuuid,
     sold int static,
