@@ -47,14 +47,13 @@ class VouchersMutableLWT implements VoucherManager {
                return false;
             }
         } catch (WriteTimeoutException e) {
-            // TODO check if this was in the paxos phase or the commit
-            LOGGER.warn("Failed to write", e);
+//            LOGGER.warn("Failed to write", e);
             if (e.getWriteType().equals(WriteType.CAS)) {
                 throw new UnknownException();
             } else if (e.getWriteType().equals(WriteType.SIMPLE)) {
                 throw new CommitFailed();
             } else {
-                throw new RuntimeException("Unexpected write type:j " + e.getWriteType());
+                throw new RuntimeException("Unexpected write type: " + e.getWriteType());
             }
         }
     }
