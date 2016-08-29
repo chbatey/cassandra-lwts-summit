@@ -2,6 +2,7 @@ package info.batey.examples.cassandra.lwts;
 
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Session;
+import org.HdrHistogram.Histogram;
 import org.junit.Before;
 import org.junit.Test;
 import org.slf4j.Logger;
@@ -14,23 +15,26 @@ import java.util.stream.Stream;
 
 import static java.util.stream.IntStream.range;
 import static org.hamcrest.CoreMatchers.allOf;
-import static org.hamcrest.Matchers.greaterThan;
-import static org.hamcrest.Matchers.lessThan;
+import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 
 public class LWTTest {
 
     private final static Logger LOG = LoggerFactory.getLogger(LWTTest.class);
+    private final static String HOST = "localhost";
 
     private final static int CLIENTS = 10;
-    private final static int VOUCHERS_EACH = 100;
+    private final static int VOUCHERS_EACH = 1000;
     private Cluster cluster;
     private Session session;
 
     @Before
     public void setUp() throws Exception {
-        cluster = Cluster.builder().addContactPoint("localhost").build();
+        cluster = Cluster.builder()
+                .addContactPoint(HOST)
+                .withCredentials("cassandra", "cassandra")
+                .build();
         session = cluster.connect();
         setupSchema();
     }
@@ -40,7 +44,7 @@ public class LWTTest {
         VoucherManager vm = new VouchersMutable(session);
         String voucherName = "free tv";
         vm.deleteVoucher(voucherName);
-        testVouchers(vm, voucherName);
+        testVouchers(vm, voucherName, true);
     }
 
     @Test
@@ -48,15 +52,38 @@ public class LWTTest {
         VoucherManager vm = new VouchersMutableLWT(session);
         String voucherName = "free tv";
         vm.deleteVoucher(voucherName);
-        testVouchers(vm, voucherName);
+        testVouchers(vm, voucherName, true);
     }
 
-    private void testVouchers(VoucherManager vm, String voucherName) throws InterruptedException {
-        vm.createVoucher(voucherName);
+    @Test
+    public void testLWTNoContention() throws Exception {
+        VoucherManager vm = new VouchersMutableLWT(session);
+        String voucherName = "free tv";
+        vm.deleteVoucher(voucherName);
+        testVouchers(vm, voucherName, false);
+    }
+
+    @Test
+    public void testLWTBatches() throws Exception {
+        VoucherManager vm = new VouchersBatches(session);
+        String voucherName = "free tv";
+        vm.deleteVoucher(voucherName);
+        testVouchers(vm, voucherName, true);
+    }
+
+    private void testVouchers(VoucherManager vm, String voucherName, boolean sameVoucher) throws InterruptedException {
+        if (sameVoucher) vm.createVoucher(voucherName);
         CountDownLatch start = new CountDownLatch(CLIENTS);
         CountDownLatch finish = new CountDownLatch(CLIENTS);
-        Stream<Client> clients = range(0, CLIENTS).mapToObj(i ->
-                new Client(vm, VOUCHERS_EACH, voucherName, "client " + i, start, finish));
+        Stream<Client> clients = range(0, CLIENTS).mapToObj(i -> {
+            if (sameVoucher) {
+                return new Client(vm, VOUCHERS_EACH, voucherName, "client " + i, start, finish);
+            } else {
+                String vName = String.format("%s %d", voucherName, i);
+                vm.createVoucher(vName);
+                return new Client(vm, VOUCHERS_EACH, vName, "client " + i, start, finish);
+            }
+        });
 
         List<Client> allClients = clients.collect(Collectors.toList());
         allClients.forEach(Thread::start);
@@ -67,11 +94,23 @@ public class LWTTest {
         long commitFailed = allClients.stream().map(Client::getCommitFailed).mapToInt(Integer::intValue).sum();
         long unknown = allClients.stream().map(Client::getUnknowns).mapToInt(Integer::intValue).sum();
 
+        Histogram results = new Histogram(3600000000000L, 3);
+        allClients.stream().map(Client::getHistogram).forEach(results::add);
+
+        results.outputPercentileDistribution(System.out, 1000.0);
+
         LOG.info("Bought {} Failed {} Commit Failed {} Unknown {}", bought, failed, commitFailed, unknown);
 
-        long vouchersSoldServer = vm.vouchersSold(voucherName);
-        assertEquals("We lost updates", CLIENTS * VOUCHERS_EACH, bought + failed + commitFailed + unknown);
-        assertThat(vouchersSoldServer, allOf(greaterThan(bought), lessThan(bought + unknown + commitFailed)));
+        if (sameVoucher) {
+            long vouchersSoldServer = vm.vouchersSold(voucherName);
+            assertEquals("We lost updates", CLIENTS * VOUCHERS_EACH, bought + failed + commitFailed + unknown);
+            assertThat(vouchersSoldServer, allOf(greaterThanOrEqualTo(bought), lessThanOrEqualTo(bought + unknown + commitFailed)));
+        } else {
+            Stream<String> voucherNames = range(0, CLIENTS).mapToObj(i -> String.format("%s %d", voucherName, i));
+            long vouchersSoldServer = voucherNames.mapToInt(vm::vouchersSold).sum();
+            assertEquals("We lost updates", CLIENTS * VOUCHERS_EACH, bought + failed + commitFailed + unknown);
+            assertThat(vouchersSoldServer, allOf(greaterThanOrEqualTo(bought), lessThanOrEqualTo(bought + unknown + commitFailed)));
+        }
     }
 
 
@@ -97,6 +136,11 @@ public class LWTTest {
                 "    email text,\n" +
                 "    password text\n" +
                 ")");
+
+        session.execute("TRUNCATE vouchers;");
+        session.execute("TRUNCATE vouchers_mutable;");
+        session.execute("TRUNCATE users");
+
 
     }
 }

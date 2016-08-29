@@ -1,5 +1,6 @@
 package info.batey.examples.cassandra.lwts;
 
+import org.HdrHistogram.Histogram;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,6 +21,8 @@ class Client extends Thread {
     private int unknowns;
     private int commitFailed;
 
+    private Histogram histogram = new Histogram(3600000000000L, 3);
+
     Client(VoucherManager vm, int vouchersToBuy, String name, String who, CountDownLatch cdl, CountDownLatch finish) {
         this.vm = vm;
         this.vouchersToBuy = vouchersToBuy;
@@ -37,8 +40,10 @@ class Client extends Thread {
             cdl.await();
             LOG.info("Starting");
             for (int i = 0; i < vouchersToBuy; i++) {
+                long start = System.nanoTime();
                 try {
-                    if (vm.sellVoucher(name, who)) {
+                    boolean sold = vm.sellVoucher(name, who);
+                    if (sold) {
                         vouchersBought++;
                     } else {
                         vouchersFailed++;
@@ -47,6 +52,8 @@ class Client extends Thread {
                     unknowns++;
                 } catch (VoucherManager.CommitFailed e) {
                     commitFailed++;
+                } finally {
+                    histogram.recordValue(System.nanoTime() - start);
                 }
             }
         } catch (InterruptedException e) {
@@ -58,22 +65,26 @@ class Client extends Thread {
     }
 
     int getVouchersBought() {
-        LOG.info("Client {} has bought {} vouchers", who, vouchersBought);
+        LOG.debug("Client {} has bought {} vouchers", who, vouchersBought);
         return vouchersBought;
     }
 
     int getVouchersFailed() {
-        LOG.info("Client {} has had {} failures", who, vouchersFailed);
+        LOG.debug("Client {} has had {} failures", who, vouchersFailed);
         return vouchersFailed;
     }
 
     int getUnknowns() {
-        LOG.info("Client {} has {} unknowns", who, unknowns);
+        LOG.debug("Client {} has {} unknowns", who, unknowns);
         return unknowns;
     }
 
-    public int getCommitFailed() {
-        LOG.info("Client {} has {} commit failed", who, commitFailed);
+    int getCommitFailed() {
+        LOG.debug("Client {} has {} commit failed", who, commitFailed);
         return commitFailed;
+    }
+
+    public Histogram getHistogram() {
+        return histogram;
     }
 }
