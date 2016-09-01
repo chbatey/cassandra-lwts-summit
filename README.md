@@ -309,8 +309,6 @@ APPLY BATCH ;
 
 ## TODO
 
-Examples + CQL + Java
-
 Isolation levels
 Raft
 Ramp

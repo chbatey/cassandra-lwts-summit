@@ -8,7 +8,6 @@ import org.slf4j.LoggerFactory;
 class VouchersBatches implements VoucherManager {
 
     private static final Logger LOG = LoggerFactory.getLogger(VouchersBatches.class);
-    private static final int MAX_VOUCHERS = 3;
 
     private Session session;
     private static final String GET_SOLD_VOUCHERS = "SELECT sold FROM vouchers WHERE name = ?";

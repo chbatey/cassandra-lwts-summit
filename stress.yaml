@@ -1,0 +1,40 @@
+keyspace: tlp
+
+# Would almost always be network topology unless running something locally
+keyspace_definition: |
+  CREATE KEYSPACE tlp WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3};
+
+table: vouchers_mutable
+
+# The table under test. Start with a partition per staff member
+# Is this a good idea?
+table_definition: |
+  CREATE TABLE lwts.vouchers_mutable (
+    name text PRIMARY KEY,
+    sold int
+  )
+
+
+columnspec:
+  - name: name
+    size: uniform(5..10)
+    population: uniform(1..10)
+  - name: sold
+    size: normal(10..100,50)
+
+insert:
+  # we only update a single partition in any given insert 
+  partitions: fixed(1) 
+  # we want to insert a single row per partition and we have between 20 and 500
+  # rows per partition
+  select: fixed(1)/500 
+  batchtype: UNLOGGED             # Single partition unlogged batches are essentially noops
+
+queries:
+   events:
+      cql: select *  from staff_activities where name = ?
+      fields: samerow
+   latest_event:
+      cql: select * from staff_activities where name = ?  LIMIT 1
+      fields: samerow
+
