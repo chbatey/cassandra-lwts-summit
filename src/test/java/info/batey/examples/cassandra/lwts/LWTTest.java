@@ -22,15 +22,19 @@ import static org.junit.Assert.assertThat;
 public class LWTTest {
 
     private final static Logger LOG = LoggerFactory.getLogger(LWTTest.class);
+    private final static String HOST = "localhost";
 
     private final static int CLIENTS = 10;
-    private final static int VOUCHERS_EACH = 100;
+    private final static int VOUCHERS_EACH = 1000;
     private Cluster cluster;
     private Session session;
 
     @Before
     public void setUp() throws Exception {
-        cluster = Cluster.builder().addContactPoint("localhost").build();
+        cluster = Cluster.builder()
+                .addContactPoint(HOST)
+                .withCredentials("cassandra", "cassandra")
+                .build();
         session = cluster.connect();
         setupSchema();
 
