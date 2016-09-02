@@ -47,7 +47,7 @@ class VouchersMutableLWT implements VoucherManager {
                return false;
             }
         } catch (WriteTimeoutException e) {
-//            LOGGER.warn("Failed to write", e);
+            LOGGER.warn("Failed to write", e);
             if (e.getWriteType().equals(WriteType.CAS)) {
                 throw new UnknownException();
             } else if (e.getWriteType().equals(WriteType.SIMPLE)) {
