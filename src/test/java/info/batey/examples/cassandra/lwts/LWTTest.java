@@ -22,7 +22,7 @@ import static org.junit.Assert.assertThat;
 public class LWTTest {
 
     private final static Logger LOG = LoggerFactory.getLogger(LWTTest.class);
-    private final static String HOST = "localhost";
+    private final static String HOST = "cassandra-02a-commerce-test-k8.api.bskyb.com";
 
     private final static int CLIENTS = 10;
     private final static int VOUCHERS_EACH = 1000;
